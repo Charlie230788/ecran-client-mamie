@@ -188,7 +188,6 @@ class MainActivity : Activity() {
         val uri = "vivapayclient://pay/v1?appId=fr.mamamiefoodtruck.caisse&action=abort&callback=" + Uri.encode("mmfecran://result")
         try {
             val i = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
             startActivity(i)
         } catch (e: ActivityNotFoundException) {
         }
