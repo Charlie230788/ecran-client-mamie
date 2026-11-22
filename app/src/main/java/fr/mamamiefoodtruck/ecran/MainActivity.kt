@@ -112,6 +112,7 @@ class MainActivity : Activity() {
     }
 
     private fun deliver(j: String) {
+        ticking = false
         web.evaluateJavascript("window.mmfPayResult && window.mmfPayResult(" + JSONObject.quote(j) + ")", null)
     }
 
@@ -167,7 +168,34 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private var ticking = false
+    private val ticker = object : Runnable {
+        override fun run() {
+            if (!ticking) return
+            web.evaluateJavascript("window.mmfPollNow && window.mmfPollNow()", null)
+            handler.postDelayed(this, 1500)
+        }
+    }
+
+    private fun startTicker() {
+        if (!ticking) {
+            ticking = true
+            handler.postDelayed(ticker, 1500)
+        }
+    }
+
+    private fun abortPay() {
+        val uri = "vivapayclient://pay/v1?appId=fr.mamamiefoodtruck.caisse&action=abort&callback=" + Uri.encode("mmfecran://result")
+        try {
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+            startActivity(i)
+        } catch (e: ActivityNotFoundException) {
+        }
+    }
+
     private fun launchPay(cents: Int, id: String) {
+        startTicker()
         val uri = "vivapayclient://pay/v1?appId=fr.mamamiefoodtruck.caisse&action=sale&amount=" + cents +
             "&clientTransactionId=" + Uri.encode(id) +
             "&customerTrns=" + Uri.encode("Ma Mamie") +
@@ -187,6 +215,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun pay(cents: Int, id: String) {
             runOnUiThread { launchPay(cents, id) }
+        }
+
+        @JavascriptInterface
+        fun abort() {
+            runOnUiThread { abortPay() }
         }
     }
 }
