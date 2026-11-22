@@ -1,0 +1,36 @@
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Keystore (cache)
+        uses: actions/cache@v4
+        with:
+          path: app/ecran.jks
+          key: ecran-keystore-v1
+      - name: Create keystore if missing
+        run: |
+          test -f app/ecran.jks || keytool -genkeypair -keystore app/ecran.jks -storepass ecran1234 -keypass ecran1234 -alias ecran -keyalg RSA -keysize 2048 -validity 12000 -dname "CN=Ma Mamie Ecran Client, C=FR"
+      - name: Build
+        run: gradle --no-daemon assembleRelease
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk EcranClient.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest EcranClient.apk --title "Ecran client" --notes "Derniere version de l'application" --latest
