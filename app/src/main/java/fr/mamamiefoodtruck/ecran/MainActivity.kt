@@ -1,0 +1,192 @@
+package fr.mamamiefoodtruck.ecran
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.InputType
+import android.view.View
+import android.view.WindowManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.EditText
+import org.json.JSONObject
+
+class MainActivity : Activity() {
+
+    private lateinit var web: WebView
+    private var pending: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        web = WebView(this)
+        setContentView(web)
+        val s = web.settings
+        s.javaScriptEnabled = true
+        s.domStorageEnabled = true
+        s.cacheMode = WebSettings.LOAD_NO_CACHE
+        s.mediaPlaybackRequiresUserGesture = false
+        web.addJavascriptInterface(Bridge(), "Android")
+        web.setOnLongClickListener { menu(); true }
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val u = request.url.toString()
+                if (u.startsWith("intent:")) {
+                    try {
+                        startActivity(Intent.parseUri(u, Intent.URI_INTENT_SCHEME))
+                    } catch (e: Exception) {
+                    }
+                    return true
+                }
+                if (u.startsWith("mmfecran:")) {
+                    return true
+                }
+                return false
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                val p = pending
+                if (p != null && url.startsWith("http")) {
+                    pending = null
+                    deliver(p)
+                }
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) {
+                    view.loadData("<html><body style='font-family:sans-serif;text-align:center;padding-top:30vh'><h2>Connexion en cours...</h2></body></html>", "text/html", "utf-8")
+                    handler.postDelayed({ load() }, 5000)
+                }
+            }
+        }
+        handleIntent(intent)
+        load()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+        val p = pending
+        val cur = web.url
+        if (p != null && cur != null && cur.startsWith("http")) {
+            pending = null
+            deliver(p)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+        }
+    }
+
+    private fun handleIntent(i: Intent?) {
+        val d = i?.data ?: return
+        if (d.scheme != "mmfecran") return
+        val o = JSONObject()
+        for (k in d.queryParameterNames) {
+            o.put(k, d.getQueryParameter(k) ?: "")
+        }
+        pending = o.toString()
+        i.setData(null)
+    }
+
+    private fun deliver(j: String) {
+        web.evaluateJavascript("window.mmfPayResult && window.mmfPayResult(" + JSONObject.quote(j) + ")", null)
+    }
+
+    private fun load() {
+        val u = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("url", null)
+        if (u == null) {
+            ask()
+        } else {
+            web.loadUrl(u)
+        }
+    }
+
+    private fun ask() {
+        val et = EditText(this)
+        et.hint = "Lien ou code de l'ecran client"
+        et.inputType = InputType.TYPE_TEXT_VARIATION_URI
+        AlertDialog.Builder(this)
+            .setTitle("Ecran client")
+            .setMessage("Colle ici le lien de l'ecran client.")
+            .setView(et)
+            .setCancelable(false)
+            .setPositiveButton("OK") { _, _ ->
+                val v = et.text.toString().trim()
+                var host = "https://mamamiefoodtruck.com"
+                var tok: String? = null
+                val m = Regex("(https://[^/ ]+)/[?]mmf_ecran=([0-9A-Za-z]+)").find(v)
+                if (m != null) {
+                    host = m.groupValues[1]
+                    tok = m.groupValues[2]
+                } else if (Regex("[0-9A-Za-z]{16,}").matches(v)) {
+                    tok = v
+                }
+                if (tok == null) {
+                    ask()
+                } else {
+                    val url = host + "/?mmf_ecran=" + tok + "&app=1"
+                    getSharedPreferences("cfg", Context.MODE_PRIVATE).edit().putString("url", url).apply()
+                    web.loadUrl(url)
+                }
+            }
+            .show()
+    }
+
+    private fun menu() {
+        AlertDialog.Builder(this)
+            .setItems(arrayOf("Recharger", "Changer le lien", "Quitter")) { _, w ->
+                when (w) {
+                    0 -> web.reload()
+                    1 -> ask()
+                    else -> finishAffinity()
+                }
+            }
+            .show()
+    }
+
+    private fun launchPay(cents: Int, id: String) {
+        val uri = "vivapayclient://pay/v1?appId=fr.mamamiefoodtruck.caisse&action=sale&amount=" + cents +
+            "&clientTransactionId=" + Uri.encode(id) +
+            "&customerTrns=" + Uri.encode("Ma Mamie") +
+            "&protocol=int_default&paymentMethod=CardPresent&show_transaction_result=false&callback=" + Uri.encode("mmfecran://result")
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+        } catch (e: ActivityNotFoundException) {
+            val o = JSONObject()
+            o.put("status", "fail")
+            o.put("message", "Viva Terminal introuvable")
+            o.put("clientTransactionId", id)
+            deliver(o.toString())
+        }
+    }
+
+    inner class Bridge {
+        @JavascriptInterface
+        fun pay(cents: Int, id: String) {
+            runOnUiThread { launchPay(cents, id) }
+        }
+    }
+}
