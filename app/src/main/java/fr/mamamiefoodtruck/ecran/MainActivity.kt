@@ -6,11 +6,14 @@ import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -85,6 +88,48 @@ class MainActivity : Activity() {
         if (p != null && cur != null && cur.startsWith("http")) {
             pending = null
             deliver(p)
+        }
+    }
+
+    private var overlay: View? = null
+    private var asked = false
+
+    override fun onResume() {
+        super.onResume()
+        if (Settings.canDrawOverlays(this)) {
+            ensureOverlay()
+        } else {
+            askOverlay()
+        }
+    }
+
+    private fun askOverlay() {
+        if (asked) return
+        asked = true
+        AlertDialog.Builder(this)
+            .setTitle("Autorisation")
+            .setMessage("Pour pouvoir annuler un paiement depuis la caisse, autorise Ecran client a s'afficher par-dessus les autres applications.")
+            .setPositiveButton("Autoriser") { _, _ ->
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
+            }
+            .setNegativeButton("Plus tard", null)
+            .show()
+    }
+
+    private fun ensureOverlay() {
+        if (overlay != null) return
+        val v = View(applicationContext)
+        val lp = WindowManager.LayoutParams(
+            1, 1,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        lp.gravity = Gravity.TOP or Gravity.START
+        try {
+            (getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
+            overlay = v
+        } catch (e: Exception) {
         }
     }
 
