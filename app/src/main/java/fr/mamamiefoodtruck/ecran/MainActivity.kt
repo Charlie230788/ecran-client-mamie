@@ -209,11 +209,12 @@ class MainActivity : Activity() {
 
     private fun menu() {
         AlertDialog.Builder(this)
-            .setItems(arrayOf("Recharger", "Changer le lien", "Activer la caisse (Viva)", "Quitter")) { _, w ->
+            .setItems(arrayOf("Recharger", "Changer le lien", "Activer la caisse (Viva)", "Reinitialiser Viva (POS)", "Quitter")) { _, w ->
                 when (w) {
                     0 -> web.reload()
                     1 -> ask()
                     2 -> askActivation()
+                    3 -> resetPos()
                     else -> finishAffinity()
                 }
             }
@@ -310,7 +311,23 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showActivationResult(o: JSONObject) {
+        private fun resetPos() {
+        awaitingActivation = true
+        val uri = "vivapayclient://pay/v1?appId=fr.mamamiefoodtruck.caisse&action=reset&softReset=false" +
+            "&callback=" + Uri.encode("mmfecran://result")
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+        } catch (e: ActivityNotFoundException) {
+            awaitingActivation = false
+            AlertDialog.Builder(this)
+                .setTitle("Erreur")
+                .setMessage("Viva Terminal introuvable sur cet appareil.")
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
+private fun showActivationResult(o: JSONObject) {
         val status = if (o.has("status")) o.getString("status") else "inconnu"
         val msg = if (status == "success") {
             "Caisse activee avec succes sur cet appareil.\n" + o.toString()
@@ -318,7 +335,7 @@ class MainActivity : Activity() {
             "Echec de l'activation.\n" + o.toString()
         }
         AlertDialog.Builder(this)
-            .setTitle("Activation Viva")
+            .setTitle("Resultat Viva (" + (if (o.has("action")) o.getString("action") else "?") + ")")
             .setMessage(msg)
             .setPositiveButton("OK", null)
             .show()
