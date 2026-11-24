@@ -29,38 +29,6 @@ class MainActivity : Activity() {
 
     private lateinit var web: WebView
     private var pending: String? = null
-    private val handler = Handler(Looper.getMainLooper())
-package fr.mamamiefoodtruck.ecran
-
-import android.annotation.SuppressLint
-import android.app.Activity
-import android.app.AlertDialog
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
-import android.graphics.PixelFormat
-import android.net.Uri
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
-import android.text.InputType
-import android.view.Gravity
-import android.view.View
-import android.view.WindowManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.EditText
-import org.json.JSONObject
-
-class MainActivity : Activity() {
-
-    private lateinit var web: WebView
-    private var pending: String? = null
     private var awaitingActivation = false
     private val handler = Handler(Looper.getMainLooper())
 
