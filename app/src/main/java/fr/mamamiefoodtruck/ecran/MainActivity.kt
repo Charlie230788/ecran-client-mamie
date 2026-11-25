@@ -158,8 +158,56 @@ class MainActivity : Activity() {
             awaitingActivation = false
             showActivationResult(o)
         } else {
+            reportResultDirect(o)
             pending = o.toString()
         }
+    }
+
+    // Rapporte le resultat du paiement directement au serveur (sans dependre de la WebView / JS),
+    // en plus de la livraison normale via mmfPayResult. Filet de securite si la page est bloquee,
+    // en cours de rechargement, ou si l'appli a ete relancee a froid au moment du callback Viva.
+    private fun reportResultDirect(o: JSONObject) {
+        if (o.optString("action", "").equals("abort", ignoreCase = true)) return
+        Thread {
+            try {
+                val cfgUrl = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("url", null) ?: return@Thread
+                val m = Regex("(https://[^/]+)/\\?mmf_ecran=([0-9A-Za-z]+)").find(cfgUrl) ?: return@Thread
+                val host = m.groupValues[1]
+                val tok = m.groupValues[2]
+                val sb = StringBuilder()
+                fun add(k: String, v: String) {
+                    if (sb.isNotEmpty()) sb.append('&')
+                    sb.append(java.net.URLEncoder.encode(k, "UTF-8")).append('=').append(java.net.URLEncoder.encode(v, "UTF-8"))
+                }
+                add("action", "mmf_ecl_result")
+                add("k", tok)
+                val keys = o.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    add(k, o.optString(k, ""))
+                }
+                add("id", o.optString("clientTransactionId", ""))
+                val body = sb.toString()
+                val url = java.net.URL(host + "/wp-admin/admin-ajax.php")
+                for (attempt in 0 until 6) {
+                    try {
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.doOutput = true
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 8000
+                        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                        conn.outputStream.use { it.write(body.toByteArray()) }
+                        conn.inputStream.use { it.readBytes() }
+                        conn.disconnect()
+                        break
+                    } catch (e: Exception) {
+                        if (attempt < 5) Thread.sleep(2500)
+                    }
+                }
+            } catch (e: Exception) {
+            }
+        }.start()
     }
 
     private fun deliver(j: String) {
