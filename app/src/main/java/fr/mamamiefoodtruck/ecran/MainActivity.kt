@@ -75,6 +75,18 @@ class MainActivity : Activity() {
                     handler.postDelayed({ load() }, 5000)
                 }
             }
+
+            // Si le processus de rendu de la WebView plante (manque de memoire, etc.),
+            // Android ferme toute l'appli par defaut. On recree l'ecran a la place,
+            // pour que l'ecran client ne se ferme plus tout seul.
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                try {
+                    web.destroy()
+                } catch (e: Exception) {
+                }
+                handler.post { recreate() }
+                return true
+            }
         }
         handleIntent(intent)
         load()
