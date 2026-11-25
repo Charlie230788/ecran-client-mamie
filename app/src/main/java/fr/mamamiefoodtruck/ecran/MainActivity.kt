@@ -196,6 +196,7 @@ class MainActivity : Activity() {
                 val keys = o.keys()
                 while (keys.hasNext()) {
                     val k = keys.next()
+                    if (k == "action" || k == "k") continue
                     add(k, o.optString(k, ""))
                 }
                 add("id", o.optString("clientTransactionId", ""))
